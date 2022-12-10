@@ -1,83 +1,132 @@
-import logging
-import shutil
-from pathlib import Path
-from typing import Union
+import streamlit as st
+import pandas as pd
+import altair as alt
 
-import psutil
+st.set_page_config(page_title="Graficas", page_icon="📈")
 
-log = logging.getLogger(__name__)
+st.title("Gráficos")
 
+data = st.session_state["data"]
 
-def _get_disk_usage(path: Path = ".") -> float:
-    """Returns the current disk usage of the given path in percentages.
+options = st.multiselect(
+    'Seleccione la información que desea observar para que sea mostrada en un histograma:',
+    ['Magnitud', "Profundidad"],
+    ['Magnitud'])
 
-    Parameters
-    ----------
-    path : Path, optional
-        Path for which the disk usage should be determined, by default "."
+if "Magnitud" in options:
+    st.header("Histograma de Magnitudes")
 
-    Returns
-    -------
-    float
-        Value between 0.0 and 100.0 percent. 0.0 means disk is empty, 100.0 means disk is full.
-    """
-
-    stat = shutil.disk_usage(path)
-    return round(stat.used / stat.total * 100.0, 2)
-
-
-def _get_ram_usage() -> float:
-    return psutil.virtual_memory().percent
-
-
-def _get_data_size_of_dir(path: Path) -> float:
-    """Returns the data volume / size of a directory given at path.
-
-    Parameters
-    ----------
-    path : Path
-        Path for which the size should be determined
-
-    Returns
-    -------
-    float
-        Value between 0 and the max size of your disk in mega bytes.
-    """
-
-    return round(sum(f.stat().st_size for f in path.glob("**/*") if f.is_file()) / 1024**2, 4)
-
-
-def _delete_files_in_dir(path: Path, file_suffix: str, name_prefix: Union[None, str] = None) -> None:
-    for file in path.iterdir():
-        if file.suffix == file_suffix:
-            if name_prefix:  # if name prefix is specified, only delete file if name matches
-                if file.name.startswith(name_prefix):
-                    file.unlink()
-                    log.info(f"🗑  deleted file: {file}")
-            else:
-                file.unlink()
-                log.info(f"🗑  deleted file: {file}")
-
-
-def _get_number_of_files_in_dir(path: Path, file_suffix: str) -> int:
-    return len([f for f in path.glob("**/*") if f.suffix == file_suffix])
-
-
-def run_cleanup_job(path: Path, disk_cleaning_threshold: float) -> None:
-    disk_usage = _get_disk_usage(path)
-    ram_usage = _get_ram_usage()
-    mapa_cache = _get_data_size_of_dir(path)
-    log.info(f"💾  Disk usage: {disk_usage}%, Ram usage: {ram_usage}%, mapa files: {mapa_cache} MB")
-    stl_num = _get_number_of_files_in_dir(path, ".stl")
-    tiff_num = _get_number_of_files_in_dir(path, ".tiff")
-    log.info(f"🗂  Number of STL files: {stl_num}, number of TIFF files: {tiff_num}")
-    if disk_usage > disk_cleaning_threshold:
-        log.info(f"🧹  Disk usage exceeds threshold ({disk_usage}%>{disk_cleaning_threshold}%), deleting files ...")
-        _delete_files_in_dir(path, ".stl")
-        _delete_files_in_dir(path, ".zip")
-        _delete_files_in_dir(path, ".tiff", name_prefix="merged_")
-        _delete_files_in_dir(path, ".tiff", name_prefix="clipped_")
-    else:
-        log.info(
-            f"✅  Disk usage does not exceed threshold ({disk_usage}%<{disk_cleaning_threshold}%), no cleaning required."
+    mag_chart = (
+        alt.Chart(data)
+        .mark_bar()
+        .encode(
+            alt.X("Magnitud:Q", bin=alt.BinParams(maxbins=30), title="Magnitud"),
+            alt.Y("count()", title="Frecuencia de Magnitudes"),
         )
+    )
+    mag_chart.title = "Histograma de Magnitud"
+    # chart.encoding.x.title = "Magnitud"
+    # chart.encoding.y.title = "Frecuencia de Magnitudes"
+
+    st.altair_chart(mag_chart, use_container_width=True)
+    st.write("""Este gráfico muestra las magnitudes de los
+             sismos registrados.
+             La mayor cantidad de sismos registrados tiene una magnitud promedio
+             de 4.4 - 5.
+             """)
+
+data = st.session_state["data"]
+
+if "Profundidad" in options:
+    st.header("Histograma de Profundidad")
+
+    deep_chart = (
+        alt.Chart(data)
+        .mark_bar()
+        .encode(
+            alt.X("Profundidad:Q", bin=alt.BinParams(maxbins=30), title="Profundidad"),
+            alt.Y("count()", title="Frecuencia de Profundidades"),
+        )
+    )
+    deep_chart.title = "Histograma de Profundidad"
+    st.altair_chart(deep_chart, use_container_width=True)
+    st.write("""Este gráfico muestra la frecuencia de las profundidades
+             en los sismos registrados.
+             La mayor cantidad de sismos registrados presenta una
+             profundidad de 0 - 50.""")
+
+
+options_2 = st.multiselect(
+    'Seleccione la información que desea observar para que sea mostrada en el gráfico de barras: ',
+    ['Mes', "Día", "Año"],
+    ['Día'])
+
+
+list_month = [
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junior",
+    "Julio",
+    "Agosto",
+    "Setiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+]
+
+list_days = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
+
+if "Mes" in options_2:
+    st.header("Sismos por mes")
+    data_mes = data.groupby(["Mes"])["Mes"].count()
+    data_mes = pd.DataFrame({"Mes": list_month,
+                             "Sismos": list(data_mes)})
+    chart_mes = (
+        alt.Chart(data_mes)
+        .mark_bar()
+        .encode(
+            alt.X("Mes", sort=None, title="Mes"),
+            alt.Y("Sismos", title="Cantidad de sismos"),
+        )
+    )
+    chart_mes.title = "Sismos por mes"
+    st.altair_chart(chart_mes, use_container_width=True)
+
+
+if "Día" in options_2:
+    st.header("Sismos por día")
+    ddata = data.copy(deep=True)
+    ddata["Dia"] = ddata["Dia"].astype(int)
+    ddata["Dia"]= ddata["Dia"]%7
+    data_day = ddata.groupby(["Dia"])["Dia"].count()
+    data_day = pd.DataFrame({"Dia": list_days,
+                             "Sismos": list(data_day)})
+    chart_day = (
+        alt.Chart(data_day)
+        .mark_bar()
+        .encode(
+            alt.X("Dia", title="Dia", sort=None),
+            alt.Y("Sismos", title="Cantidad de sismos"),
+        )
+    )
+    chart_day.title = "Sismos por día"
+    st.altair_chart(chart_day, use_container_width=True)
+
+if "Año" in options_2:
+    st.header("Sismos por Año")
+    data_year = data.groupby(["Año"])["Año"].count()
+    data_year = pd.DataFrame({"Año": [i for i in range(1960, 2022)],
+                             "Sismos": list(data_year)})
+    chart_year = (
+        alt.Chart(data_year)
+        .mark_bar()
+        .encode(
+            alt.X("Año", sort=None, title="Año"),
+            alt.Y("Sismos", title="Cantidad de sismos"),
+        )
+    )
+    chart_year.title = "Sismos por Año"
+    st.altair_chart(chart_year, use_container_width=True)
